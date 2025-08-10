@@ -1,0 +1,6 @@
+/*
+  Content-Security-Policy: default-src * data: blob:; img-src * data: blob:; font-src * data: blob:;
+  Content-Security-Policy: style-src * 'unsafe-inline' data: blob:;
+  Content-Security-Policy: script-src * 'unsafe-inline' 'unsafe-eval' data: blob:;
+  X-Frame-Options: ALLOWALL
+  Referrer-Policy: no-referrer
