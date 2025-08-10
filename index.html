@@ -18,16 +18,15 @@
 <body>
   <div class="wrap" id="wrap">
     <div class="empty" id="empty">En attente de code…</div>
-    <div class="hint">Le runner peut recevoir plusieurs blocs&nbsp;: chaque message crée une nouvelle prévisualisation ci-dessous.</div>
+    <div class="hint">Le runner peut recevoir plusieurs blocs : chaque message crée une nouvelle prévisualisation ci-dessous.</div>
   </div>
 
   <script>
     // --- utils ---
     const escScript = s => String(s).replace(/<\/script/gi,'<\\/script');
-    function byId(id){ return document.getElementById(id); }
 
     function buildDoc(p){
-      if (p && p.doc) return p.doc; // document complet fourni
+      if (p && p.doc) return p.doc; // document entier fourni
       const html  = p && p.html  ? p.html  : '';
       const css   = p && p.css   ? `<style>${p.css}</style>` : '';
       const js    = p && p.js    ? `<script>${escScript(p.js)}</`+'script>' : '';
@@ -43,47 +42,61 @@ ${html}${attrs}${js}
     }
 
     function renderOne(payload){
-      const wrap = byId('wrap');
-      const empty = byId('empty');
+      const wrap = document.getElementById('wrap');
+      const empty = document.getElementById('empty');
       if (empty) empty.remove();
 
       const slot = document.createElement('div');
       slot.className = 'slot';
       const frame = document.createElement('iframe');
       frame.className = 'frame';
-      frame.referrerPolicy = 'no-referrer';
-      // pas de sandbox ici, on garde les effets graphiques
+      frame.referrerPolicy = 'no-referrer'; // propre
+      // IMPORTANT : pas de sandbox ici → effets graphiques OK
       frame.srcdoc = buildDoc(payload || {});
       slot.appendChild(frame);
       wrap.appendChild(slot);
     }
 
-    // --- décodeurs URL/hash ---
-    function getParamB64(){
-      const q = new URLSearchParams(location.search);
-      const p = q.get('b64');
-      if (p) return p;
-      if (location.hash.startsWith('#b64=')) return location.hash.slice(5);
-      return null;
-    }
-    function decodePayload(b64){
-      try { return JSON.parse(decodeURIComponent(atob(b64))); }
-      catch { try { return JSON.parse(atob(b64)); } catch { return null; } }
-    }
+    // 1) Handshake : on spam "ready" au parent jusqu’à recevoir du code
+    let acked = false;
+    const ping = setInterval(() => {
+      try { parent.postMessage({ from:"sw-runner", ready:true }, "*"); } catch {}
+    }, 200);
 
-    // 1) charge via ?b64=… ou #b64=…
-    (function boot(){
-      const b64 = getParamB64();
+    // 2) Réception du code
+    window.addEventListener('message', ev => {
+      // Optionnel: on pourrait vérifier ev.origin si tu veux whitelister ton domaine Odoo
+      try {
+        const data = ev.data || {};
+        if (data && (data.doc || data.html || data.css || data.js || data.attrs)) {
+          acked = true;
+          renderOne(data);
+        }
+      } catch(e){ console.error(e); }
+    });
+
+    // 3) Arrête le ping après 10s (au cas où)
+    setTimeout(() => clearInterval(ping), 10000);
+
+    // 4) Fallback: si la page est ouverte seule, supporte ?b64= et #b64=
+    (function(){
+      function getB64(){
+        const q = new URLSearchParams(location.search);
+        const p = q.get('b64');
+        if (p) return p;
+        if (location.hash.startsWith('#b64=')) return location.hash.slice(5);
+        return null;
+      }
+      function decodePayload(b64){
+        try { return JSON.parse(decodeURIComponent(atob(b64))); }
+        catch { try { return JSON.parse(atob(b64)); } catch { return null; } }
+      }
+      const b64 = getB64();
       if (b64){
-        const payload = decodePayload(b64);
-        if (payload) renderOne(payload);
+        const p = decodePayload(b64);
+        if (p) renderOne(p);
       }
     })();
-
-    // 2) supporte aussi postMessage (plusieurs blocs possibles)
-    window.addEventListener('message', ev => {
-      try { renderOne(ev.data || {}); } catch(e){ console.error(e); }
-    });
   </script>
 </body>
 </html>
