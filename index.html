@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SnippetWave Runner</title>
+  <style>
+    html,body{height:100%;margin:0}
+    body{display:grid;place-items:center;background:#fff}
+    .msg{font:14px system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#667085}
+  </style>
+  <!-- CSP permissive pour permettre <style>/<script> inline à l'intérieur du rendu -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src * data: blob:;
+                 img-src * data: blob:;
+                 style-src * 'unsafe-inline' data: blob:;
+                 script-src * 'unsafe-inline' 'unsafe-eval' data: blob:;
+                 connect-src *;
+                 frame-ancestors *">
+</head>
+<body>
+  <div class="msg">Chargement du rendu…</div>
+
+  <script>
+    function escScript(s){return String(s).replace(/<\/script/gi,'<\\/script');}
+
+    function buildDoc(p){
+      // p = { doc? , html? , css? , js? , attrs? }
+      if (p && p.doc) return p.doc;
+
+      var html  = p && p.html  ? p.html  : '';
+      var css   = p && p.css   ? '<style>'+p.css+'</style>' : '';
+      var js    = p && p.js    ? '<script>'+escScript(p.js)+'</'+'script>' : '';
+      var attrs = p && p.attrs ? '<div '+p.attrs+'></div>' : '';
+
+      // Document complet si pas de p.doc
+      return '<!doctype html><html lang="fr"><head>'
+        + '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1" />'
+        + '<base target="_blank" />'
+        + '<style>html,body{margin:0;padding:12px;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif}</style>'
+        + (css || '')
+        + '</head><body>'
+        + (html || '') + attrs + js
+        + '</body></html>';
+    }
+
+    function render(payload){
+      var docStr = buildDoc(payload || {});
+      document.open(); document.write(docStr); document.close();
+    }
+
+    // 1) Réception par postMessage (recommandé)
+    window.addEventListener('message', function(ev){
+      try { render(ev.data || {}); } catch(e){ console.error(e); }
+    }, { once:true });
+
+    // 2) Fallback via hash (#b64=JSON_base64)
+    (function(){
+      if (location.hash && location.hash.startsWith('#b64=')) {
+        try {
+          var j = atob(location.hash.slice(5));
+          var p = JSON.parse(j);
+          render(p);
+        } catch(e){}
+      }
+    })();
+  </script>
+</body>
+</html>
