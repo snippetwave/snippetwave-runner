@@ -12,29 +12,26 @@
     .hint{color:#667085;margin:8px 0 14px}
     .slot{margin:14px 0 18px}
     .frame{width:100%;height:520px;border:1px solid #e7efe9;border-radius:12px;display:block;background:#fff}
-    /* petite bannière quand rien n’a encore été envoyé */
     .empty{display:grid;place-items:center;height:60vh;color:#98a2b3}
   </style>
 </head>
 <body>
   <div class="wrap" id="wrap">
     <div class="empty" id="empty">En attente de code…</div>
-    <div class="hint">Le runner peut recevoir plusieurs blocs : chaque message crée une nouvelle prévisualisation ci-dessous.</div>
+    <div class="hint">Le runner peut recevoir plusieurs blocs&nbsp;: chaque message crée une nouvelle prévisualisation ci-dessous.</div>
   </div>
 
   <script>
-    // Utilitaires
+    // --- utils ---
     const escScript = s => String(s).replace(/<\/script/gi,'<\\/script');
+    function byId(id){ return document.getElementById(id); }
 
-    function buildDoc(payload){
-      // payload = { doc? , html? , css? , js? , attrs? }
-      if (payload && payload.doc) return payload.doc;
-
-      const html  = payload && payload.html  ? payload.html  : '';
-      const css   = payload && payload.css   ? `<style>${payload.css}</style>` : '';
-      const js    = payload && payload.js    ? `<script>${escScript(payload.js)}</`+'script>' : '';
-      const attrs = payload && payload.attrs ? `<div ${payload.attrs}></div>` : '';
-
+    function buildDoc(p){
+      if (p && p.doc) return p.doc; // document complet fourni
+      const html  = p && p.html  ? p.html  : '';
+      const css   = p && p.css   ? `<style>${p.css}</style>` : '';
+      const js    = p && p.js    ? `<script>${escScript(p.js)}</`+'script>' : '';
+      const attrs = p && p.attrs ? `<div ${p.attrs}></div>` : '';
       return `<!doctype html><html lang="fr"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1" />
 <base target="_blank" />
@@ -45,34 +42,48 @@ ${html}${attrs}${js}
 </body></html>`;
     }
 
-    // Crée une iframe de preview pour un message
     function renderOne(payload){
-      const wrap = document.getElementById('wrap');
-      const empty = document.getElementById('empty');
+      const wrap = byId('wrap');
+      const empty = byId('empty');
       if (empty) empty.remove();
 
       const slot = document.createElement('div');
       slot.className = 'slot';
       const frame = document.createElement('iframe');
       frame.className = 'frame';
-      frame.referrerPolicy = 'no-referrer'; // propre & évite les warnings
-      // IMPORTANT : aucun sandbox ici pour garder les effets graphiques (blur, filters…)
+      frame.referrerPolicy = 'no-referrer';
+      // pas de sandbox ici, on garde les effets graphiques
       frame.srcdoc = buildDoc(payload || {});
       slot.appendChild(frame);
       wrap.appendChild(slot);
     }
 
-    // 1) Reçoit des *plusieurs* messages depuis Odoo (un par bloc de code)
-    window.addEventListener('message', (ev) => {
-      try { renderOne(ev.data || {}); } catch(e) { console.error(e); }
-    });
+    // --- décodeurs URL/hash ---
+    function getParamB64(){
+      const q = new URLSearchParams(location.search);
+      const p = q.get('b64');
+      if (p) return p;
+      if (location.hash.startsWith('#b64=')) return location.hash.slice(5);
+      return null;
+    }
+    function decodePayload(b64){
+      try { return JSON.parse(decodeURIComponent(atob(b64))); }
+      catch { try { return JSON.parse(atob(b64)); } catch { return null; } }
+    }
 
-    // 2) Fallback : si la page est ouverte avec #b64=JSON_BASE64, on affiche aussi
-    (function(){
-      if (location.hash && location.hash.startsWith('#b64=')) {
-        try { const p = JSON.parse(atob(location.hash.slice(5))); renderOne(p); } catch(e){}
+    // 1) charge via ?b64=… ou #b64=…
+    (function boot(){
+      const b64 = getParamB64();
+      if (b64){
+        const payload = decodePayload(b64);
+        if (payload) renderOne(payload);
       }
     })();
+
+    // 2) supporte aussi postMessage (plusieurs blocs possibles)
+    window.addEventListener('message', ev => {
+      try { renderOne(ev.data || {}); } catch(e){ console.error(e); }
+    });
   </script>
 </body>
 </html>
