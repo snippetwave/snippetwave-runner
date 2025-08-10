@@ -5,65 +5,53 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>SnippetWave Runner</title>
   <style>
-    html,body{height:100%;margin:0}
-    body{display:grid;place-items:center;background:#fff}
+    :root { --bg:#fff }
+    html,body{height:100%;margin:0;background:var(--bg)}
+    body{display:grid;place-items:center}
     .msg{font:14px system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#667085}
+    iframe{width:100%;height:100%;border:0}
+    .wrap{width:100%;height:100%}
   </style>
-  <!-- CSP permissive pour permettre <style>/<script> inline à l'intérieur du rendu -->
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src * data: blob:;
-                 img-src * data: blob:;
-                 style-src * 'unsafe-inline' data: blob:;
-                 script-src * 'unsafe-inline' 'unsafe-eval' data: blob:;
-                 connect-src *;
-                 frame-ancestors *">
 </head>
 <body>
-  <div class="msg">Chargement du rendu…</div>
+  <div class="wrap">
+    <div class="msg">Chargement du rendu…</div>
+  </div>
 
   <script>
-    function escScript(s){return String(s).replace(/<\/script/gi,'<\\/script');}
-
+    // On N’ÉCRIT PLUS le document. On crée une iframe interne et on lui passe le code en srcdoc.
     function buildDoc(p){
-      // p = { doc? , html? , css? , js? , attrs? }
       if (p && p.doc) return p.doc;
-
       var html  = p && p.html  ? p.html  : '';
       var css   = p && p.css   ? '<style>'+p.css+'</style>' : '';
-      var js    = p && p.js    ? '<script>'+escScript(p.js)+'</'+'script>' : '';
+      var js    = p && p.js    ? '<script>'+String(p.js).replace(/<\/script/gi,'<\\/script')+'</'+'script>' : '';
       var attrs = p && p.attrs ? '<div '+p.attrs+'></div>' : '';
-
-      // Document complet si pas de p.doc
       return '<!doctype html><html lang="fr"><head>'
         + '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1" />'
         + '<base target="_blank" />'
         + '<style>html,body{margin:0;padding:12px;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif}</style>'
-        + (css || '')
-        + '</head><body>'
-        + (html || '') + attrs + js
-        + '</body></html>';
+        + css + '</head><body>' + (html||'') + attrs + js + '</body></html>';
     }
 
     function render(payload){
-      var docStr = buildDoc(payload || {});
-      document.open(); document.write(docStr); document.close();
+      var wrap = document.querySelector('.wrap');
+      wrap.innerHTML = ''; // nettoie le message
+      var f = document.createElement('iframe');
+      // IMPORTANT: AUCUN sandbox ici, pour laisser tous les effets graphiques
+      f.referrerPolicy = 'no-referrer';
+      f.srcdoc = buildDoc(payload||{});
+      wrap.appendChild(f);
     }
 
-    // 1) Réception par postMessage (recommandé)
-    window.addEventListener('message', function(ev){
-      try { render(ev.data || {}); } catch(e){ console.error(e); }
-    }, { once:true });
-
-    // 2) Fallback via hash (#b64=JSON_base64)
+    // 1) postMessage
+    window.addEventListener('message', function(ev){ try{ render(ev.data||{}); }catch(e){ console.error(e);} }, { once:true });
+    // 2) fallback via hash
     (function(){
       if (location.hash && location.hash.startsWith('#b64=')) {
-        try {
-          var j = atob(location.hash.slice(5));
-          var p = JSON.parse(j);
-          render(p);
-        } catch(e){}
+        try { render(JSON.parse(atob(location.hash.slice(5)))); } catch(e){}
       }
     })();
   </script>
 </body>
 </html>
+
