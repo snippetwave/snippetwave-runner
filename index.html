@@ -5,53 +5,74 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>SnippetWave Runner</title>
   <style>
-    :root { --bg:#fff }
+    :root{--bg:#fff}
     html,body{height:100%;margin:0;background:var(--bg)}
-    body{display:grid;place-items:center}
-    .msg{font:14px system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#667085}
-    iframe{width:100%;height:100%;border:0}
-    .wrap{width:100%;height:100%}
+    body{font:14px system-ui,"Segoe UI",Roboto,Arial,sans-serif;color:#344054}
+    .wrap{max-width:1100px;margin:0 auto;padding:8px 12px 48px}
+    .hint{color:#667085;margin:8px 0 14px}
+    .slot{margin:14px 0 18px}
+    .frame{width:100%;height:520px;border:1px solid #e7efe9;border-radius:12px;display:block;background:#fff}
+    /* petite bannière quand rien n’a encore été envoyé */
+    .empty{display:grid;place-items:center;height:60vh;color:#98a2b3}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="msg">Chargement du rendu…</div>
+  <div class="wrap" id="wrap">
+    <div class="empty" id="empty">En attente de code…</div>
+    <div class="hint">Le runner peut recevoir plusieurs blocs : chaque message crée une nouvelle prévisualisation ci-dessous.</div>
   </div>
 
   <script>
-    // On N’ÉCRIT PLUS le document. On crée une iframe interne et on lui passe le code en srcdoc.
-    function buildDoc(p){
-      if (p && p.doc) return p.doc;
-      var html  = p && p.html  ? p.html  : '';
-      var css   = p && p.css   ? '<style>'+p.css+'</style>' : '';
-      var js    = p && p.js    ? '<script>'+String(p.js).replace(/<\/script/gi,'<\\/script')+'</'+'script>' : '';
-      var attrs = p && p.attrs ? '<div '+p.attrs+'></div>' : '';
-      return '<!doctype html><html lang="fr"><head>'
-        + '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1" />'
-        + '<base target="_blank" />'
-        + '<style>html,body{margin:0;padding:12px;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif}</style>'
-        + css + '</head><body>' + (html||'') + attrs + js + '</body></html>';
+    // Utilitaires
+    const escScript = s => String(s).replace(/<\/script/gi,'<\\/script');
+
+    function buildDoc(payload){
+      // payload = { doc? , html? , css? , js? , attrs? }
+      if (payload && payload.doc) return payload.doc;
+
+      const html  = payload && payload.html  ? payload.html  : '';
+      const css   = payload && payload.css   ? `<style>${payload.css}</style>` : '';
+      const js    = payload && payload.js    ? `<script>${escScript(payload.js)}</`+'script>' : '';
+      const attrs = payload && payload.attrs ? `<div ${payload.attrs}></div>` : '';
+
+      return `<!doctype html><html lang="fr"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1" />
+<base target="_blank" />
+<style>html,body{margin:0;padding:12px;font-family:system-ui,"Segoe UI",Roboto,Arial,sans-serif}</style>
+${css}
+</head><body>
+${html}${attrs}${js}
+</body></html>`;
     }
 
-    function render(payload){
-      var wrap = document.querySelector('.wrap');
-      wrap.innerHTML = ''; // nettoie le message
-      var f = document.createElement('iframe');
-      // IMPORTANT: AUCUN sandbox ici, pour laisser tous les effets graphiques
-      f.referrerPolicy = 'no-referrer';
-      f.srcdoc = buildDoc(payload||{});
-      wrap.appendChild(f);
+    // Crée une iframe de preview pour un message
+    function renderOne(payload){
+      const wrap = document.getElementById('wrap');
+      const empty = document.getElementById('empty');
+      if (empty) empty.remove();
+
+      const slot = document.createElement('div');
+      slot.className = 'slot';
+      const frame = document.createElement('iframe');
+      frame.className = 'frame';
+      frame.referrerPolicy = 'no-referrer'; // propre & évite les warnings
+      // IMPORTANT : aucun sandbox ici pour garder les effets graphiques (blur, filters…)
+      frame.srcdoc = buildDoc(payload || {});
+      slot.appendChild(frame);
+      wrap.appendChild(slot);
     }
 
-    // 1) postMessage
-    window.addEventListener('message', function(ev){ try{ render(ev.data||{}); }catch(e){ console.error(e);} }, { once:true });
-    // 2) fallback via hash
+    // 1) Reçoit des *plusieurs* messages depuis Odoo (un par bloc de code)
+    window.addEventListener('message', (ev) => {
+      try { renderOne(ev.data || {}); } catch(e) { console.error(e); }
+    });
+
+    // 2) Fallback : si la page est ouverte avec #b64=JSON_BASE64, on affiche aussi
     (function(){
       if (location.hash && location.hash.startsWith('#b64=')) {
-        try { render(JSON.parse(atob(location.hash.slice(5)))); } catch(e){}
+        try { const p = JSON.parse(atob(location.hash.slice(5))); renderOne(p); } catch(e){}
       }
     })();
   </script>
 </body>
 </html>
-
